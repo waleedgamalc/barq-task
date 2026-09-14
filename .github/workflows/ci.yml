@@ -14,7 +14,7 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      # 1. Checkout
+      # 1. Checkout ---------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -23,18 +23,8 @@ jobs:
         with:
           python-version: "3.12"
 
-      # 1.1 Create app.env FIRST so docker compose can read it anytime
-      - name: Create app.env file for CI
-        run: |
-          mkdir -p config
-          cat << EOF > config/app.env
-          POSTGRES_USER=${{ secrets.POSTGRES_USER }}
-          POSTGRES_DB=${{ secrets.POSTGRES_DB }}
-          POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
-          EOF
-
-      # 2. Syntax / Compose checks
-      - name: Python syntax check
+      # 2. Syntax / Compose checks -------------------------------------------
+      - name: Python syntax check (app + scripts)
         run: |
           python -m py_compile app/server.py app/__init__.py
           python -m py_compile validate.py failure_test.py
@@ -46,7 +36,6 @@ jobs:
 
       - name: Confirm no host ports are published for postgres/redis
         run: |
-         
           bad=$(docker compose config --format json \
             | jq -r '.services | to_entries[] | select(.key=="postgres" or .key=="redis") | select(.value.ports != null and (.value.ports | length) > 0) | .key')
           if [ -n "$bad" ]; then
@@ -55,19 +44,18 @@ jobs:
           fi
           echo "OK: postgres/redis do not publish host ports"
 
-      # 3. Build
+      # 3. Build --------------------------------------------------------------
       - name: Build images
         run: docker compose build
 
-
-      # 4. Start
+      # 4. Start ---------------------------------------------------------------
       - name: Start the stack
         run: docker compose up -d
 
       - name: Show container status right after start
         run: docker compose ps
 
-      # 5. Wait for readiness
+      # 5. Wait for readiness ---------------------------------------------------
       - name: Wait for all services to report healthy
         run: |
           echo "Waiting up to 60s for postgres, redis, app-01, app-02 and nginx to become healthy..."
@@ -97,24 +85,24 @@ jobs:
           done
           exit 1
 
-      # 6. Validate
-      - name: Run validate.py
+      # 6. Validate --------------------------------------------------------------
+      - name: Run validate.py (endpoints, load balancing, readiness, port isolation)
         run: python3 validate.py
 
-      # Diagnostics on failure
+      # Diagnostics on failure ------------------------------------------------
       - name: Dump logs on failure
         if: failure()
         run: |
           docker compose ps
           docker compose logs --tail=200
 
-      # 7. Cleanup
+      # 7. Cleanup ----------------------------------------------------------------
       - name: Tear down
         if: always()
         run: docker compose down -v
 
   security-scan:
-    name: Image security scan
+    name: Image security scan (extra credit, non-blocking)
     runs-on: ubuntu-latest
     needs: validate
     continue-on-error: true
