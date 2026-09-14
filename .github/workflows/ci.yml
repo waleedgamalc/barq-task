@@ -52,12 +52,12 @@ jobs:
       # 4 Overridibng app.env file with our secrets
       - name: Create app.env file for CI
         run: |
-        mkdir -p config
-        cat << EOF > config/app.env
-        POSTGRES_USER=${{ secrets.POSTGRES_USER }}
-        POSTGRES_DB=${{ secrets.POSTGRES_DB }}
-        POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
-        EOF
+          mkdir -p config
+          cat << EOF > config/app.env
+          POSTGRES_USER=${{ secrets.POSTGRES_USER }}
+          POSTGRES_DB=${{ secrets.POSTGRES_DB }}
+          POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+          EOF
 
       # 5. Start
       - name: Start the stack
