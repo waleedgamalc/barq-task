@@ -23,6 +23,20 @@ jobs:
         with:
           python-version: "3.12"
 
+      # 1.1 config/app.env is gitignored on purpose (it holds credentials),
+      # so CI must generate it from repository secrets before any docker
+      # compose command runs (compose reads env_file paths even for `config`).
+      - name: Create config/app.env from secrets
+        run: |
+          mkdir -p config
+          cat > config/app.env <<EOF
+          POSTGRES_USER=${{ secrets.POSTGRES_USER }}
+          POSTGRES_DB=${{ secrets.POSTGRES_DB }}
+          POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+          DATABASE_URL=postgresql://${{ secrets.POSTGRES_USER }}:${{ secrets.POSTGRES_PASSWORD }}@postgres:5432/${{ secrets.POSTGRES_DB }}
+          REDIS_URL=redis://redis:6379/0
+          EOF
+
       # 2. Syntax / Compose checks -------------------------------------------
       - name: Python syntax check (app + scripts)
         run: |
