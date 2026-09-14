@@ -49,14 +49,24 @@ jobs:
       - name: Build images
         run: docker compose build
 
-      # 4. Start
+      # 4 Overridibng app.env file with our secrets
+      - name: Create app.env file for CI
+      run: |
+        mkdir -p config
+        cat << EOF > config/app.env
+        POSTGRES_USER=${{ secrets.POSTGRES_USER }}
+        POSTGRES_DB=${{ secrets.POSTGRES_DB }}
+        POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+        EOF
+
+      # 5. Start
       - name: Start the stack
         run: docker compose up -d
 
       - name: Show container status right after start
         run: docker compose ps
 
-      # 5. Wait for readiness
+      # 6. Wait for readiness
       - name: Wait for all services to report healthy
         run: |
           echo "Waiting up to 60s for postgres, redis, app-01, app-02 and nginx to become healthy..."
@@ -86,7 +96,7 @@ jobs:
           done
           exit 1
 
-      # 6. Validate
+      # 7. Validate
       - name: Run validate.py
         run: python3 validate.py
 
@@ -97,7 +107,7 @@ jobs:
           docker compose ps
           docker compose logs --tail=200
 
-      # 7. Cleanup
+      # 8. Cleanup
       - name: Tear down
         if: always()
         run: docker compose down -v
