@@ -30,10 +30,7 @@ services:
         limits:
           cpus: "1.0"
           memory: 512M
-    environment:
-      POSTGRES_USER: barq_app
-      POSTGRES_DB: barq_tasks
-      POSTGRES_PASSWORD: BarqLabOnly_7qN2vK8c
+    env_file: ./config/app.env
 
     volumes:
       - postgres-data:/var/lib/postgresql/data
