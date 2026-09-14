@@ -1,0 +1,123 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+  workflow_dispatch: {}
+
+jobs:
+  validate:
+    name: Build, run and validate the stack
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      # 1. Checkout
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # 2. Syntax / Compose checks
+      - name: Python syntax check
+        run: |
+          python -m py_compile app/server.py app/__init__.py
+          python -m py_compile validate.py failure_test.py
+          python -m py_compile scripts/video_challenge.py
+          python -m py_compile tests/test_app.py
+
+      - name: Validate docker-compose.yml syntax
+        run: docker compose config -q
+
+      - name: Confirm no host ports are published for postgres/redis
+        run: |
+         
+          bad=$(docker compose config --format json \
+            | jq -r '.services | to_entries[] | select(.key=="postgres" or .key=="redis") | select(.value.ports != null and (.value.ports | length) > 0) | .key')
+          if [ -n "$bad" ]; then
+            echo "FAIL: these services must not publish host ports: $bad"
+            exit 1
+          fi
+          echo "OK: postgres/redis do not publish host ports"
+
+      # 3. Build
+      - name: Build images
+        run: docker compose build
+
+      # 4. Start
+      - name: Start the stack
+        run: docker compose up -d
+
+      - name: Show container status right after start
+        run: docker compose ps
+
+      # 5. Wait for readiness
+      - name: Wait for all services to report healthy
+        run: |
+          echo "Waiting up to 60s for postgres, redis, app-01, app-02 and nginx to become healthy..."
+          deadline=$((SECONDS + 60))
+          services="postgres redis app-01 app-02 nginx"
+          while [ $SECONDS -lt $deadline ]; do
+            all_healthy=true
+            for svc in $services; do
+              cid=$(docker compose ps -q "$svc")
+              status=$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' "$cid" 2>/dev/null || echo "missing")
+              if [ "$status" != "healthy" ] && [ "$status" != "no-healthcheck" ]; then
+                all_healthy=false
+              fi
+            done
+            if [ "$all_healthy" = true ]; then
+              echo "All services healthy (or have no healthcheck)."
+              docker compose ps
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "Timed out waiting for services to become healthy."
+          docker compose ps
+          for svc in $services; do
+            echo "---- logs: $svc ----"
+            docker compose logs --tail=50 "$svc" || true
+          done
+          exit 1
+
+      # 6. Validate
+      - name: Run validate.py
+        run: python3 validate.py
+
+      # Diagnostics on failure
+      - name: Dump logs on failure
+        if: failure()
+        run: |
+          docker compose ps
+          docker compose logs --tail=200
+
+      # 7. Cleanup
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
+
+  security-scan:
+    name: Image security scan
+    runs-on: ubuntu-latest
+    needs: validate
+    continue-on-error: true
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build app image for scanning
+        run: docker build -t barq-app:ci .
+
+      - name: Scan app image with Trivy
+        uses: aquasecurity/trivy-action@0.29.0
+        with:
+          image-ref: barq-app:ci
+          format: table
+          severity: CRITICAL,HIGH
+          exit-code: "0"
