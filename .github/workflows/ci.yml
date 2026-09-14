@@ -51,7 +51,7 @@ jobs:
 
       # 4 Overridibng app.env file with our secrets
       - name: Create app.env file for CI
-      run: |
+        run: |
         mkdir -p config
         cat << EOF > config/app.env
         POSTGRES_USER=${{ secrets.POSTGRES_USER }}
